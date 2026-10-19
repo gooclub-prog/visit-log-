@@ -157,7 +157,19 @@ a{color:var(--accent)}
   <section id="view-list" hidden>
     <div class="row" style="margin-bottom:12px">
       <input type="search" id="q" placeholder="업장명·주소·메모 검색" style="flex:1;min-width:0">
-      <button class="btn" id="btn-csv" type="button">CSV</button>
+      <button class="btn" id="btn-backup" type="button" aria-expanded="false">백업</button>
+    </div>
+    <div class="card" id="backup" hidden style="margin-bottom:12px;gap:12px">
+      <div class="field">
+        <strong>기록 백업</strong>
+        <p class="hint" id="backup-last">아직 백업한 적이 없어요.</p>
+      </div>
+      <button class="btn primary" id="btn-bk-save" type="button">전체 백업 파일 만들기 (사진 포함)</button>
+      <p class="hint">파일이 만들어지면 구글 드라이브, 카카오톡 "나와의 채팅", 이메일 등에 저장해 두세요. 휴대폰을 바꾸거나 앱을 지웠을 때 이 파일로 되살릴 수 있어요.</p>
+      <input type="file" id="f-restore" accept=".json,application/json" hidden>
+      <button class="btn" id="btn-bk-load" type="button">백업 파일에서 되살리기</button>
+      <button class="btn" id="btn-csv" type="button">엑셀(CSV)로 내보내기 (사진 제외)</button>
+      <p class="hint" id="backup-msg" hidden></p>
     </div>
     <div class="list" id="list"></div>
   </section>
@@ -454,8 +466,81 @@ $('#btn-csv').onclick = async () => {
   } catch(e) { if (e?.code !== 'declined') toast('파일을 내보내지 못했어요.'); }
 };
 
+/* ---------- 전체 백업 / 되살리기 ---------- */
+const BK_KEY = 'visit-log-last-backup';
+const lsGet = k => { try { return localStorage.getItem(k); } catch(e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch(e) {} };
+function showLastBackup(){
+  const t = lsGet(BK_KEY), el = $('#backup-last');
+  if (!t) { el.textContent = '아직 백업한 적이 없어요.'; el.classList.toggle('warn', state.visits.length > 0); return; }
+  const days = Math.floor((Date.now() - new Date(t)) / 86400000);
+  el.textContent = `마지막 백업: ${fmt(t)}` + (days >= 7 ? ` (${days}일 전, 새로 백업해 주세요)` : '');
+  el.classList.toggle('warn', days >= 7);
+}
+function bkMsg(m, warn){ const el = $('#backup-msg'); el.hidden = !m; el.textContent = m || ''; el.classList.toggle('warn', !!warn); }
+$('#btn-backup').onclick = () => { const b = $('#backup'); b.hidden = !b.hidden; $('#btn-backup').setAttribute('aria-expanded', !b.hidden); showLastBackup(); bkMsg(''); };
+const blobToDataUrl = b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); });
+async function saveFile(blob, filename){
+  const dl = window.claude?.use ? await claude.use('downloads') : null;
+  if (dl) { await dl.save({ filename, data: blob }); return 'saved'; }
+  const file = new File([blob], filename, { type: blob.type });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: '방문일지 백업' }); return 'shared'; }
+    catch(e) { if (e.name === 'AbortError') return 'cancel'; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  return 'saved';
+}
+$('#btn-bk-save').onclick = async () => {
+  if (!state.visits.length) { bkMsg('백업할 기록이 아직 없어요.', true); return; }
+  const btn = $('#btn-bk-save'); btn.disabled = true; btn.textContent = '백업 파일 만드는 중…';
+  try {
+    let missing = 0;
+    const visits = [];
+    for (const v of state.visits) {
+      const photos = [];
+      for (const p of v.photos || []) {
+        try { const src = state.store.photoSrc(p); photos.push(src.startsWith('data:') ? src : await blobToDataUrl(await (await fetch(src)).blob())); }
+        catch(e) { missing++; }
+      }
+      const { id, photos: _, ...rest } = v;
+      visits.push({ ...rest, photos });
+    }
+    const data = { app: 'visit-log', version: 1, exportedAt: new Date().toISOString(), count: visits.length, visits };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const name = `visit-log-backup-${fmt(data.exportedAt).slice(0,10).replace(/\./g,'')}.json`;
+    const r = await saveFile(blob, name);
+    if (r === 'cancel') { bkMsg('백업을 취소했어요.'); return; }
+    lsSet(BK_KEY, data.exportedAt); showLastBackup();
+    bkMsg(`기록 ${visits.length}건을 백업 파일로 만들었어요 (${blob.size < 1048576 ? Math.max(1, Math.round(blob.size/1024)) + 'KB' : (blob.size/1048576).toFixed(1) + 'MB'}).` + (missing ? ` 사진 ${missing}장은 불러오지 못해 빠졌어요.` : '') + (r === 'saved' ? ' 휴대폰의 "다운로드" 폴더에 있어요.' : ''));
+  } catch(e) { if (e?.code !== 'declined') bkMsg('백업 파일을 만들지 못했어요. 다시 눌러 주세요.', true); }
+  finally { btn.disabled = false; btn.textContent = '전체 백업 파일 만들기 (사진 포함)'; }
+};
+$('#btn-bk-load').onclick = () => $('#f-restore').click();
+$('#f-restore').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const btn = $('#btn-bk-load'); btn.disabled = true; btn.textContent = '되살리는 중…';
+  try {
+    const data = JSON.parse(await f.text());
+    if (data?.app !== 'visit-log' || !Array.isArray(data.visits)) throw new Error('format');
+    const seen = new Set(state.visits.map(v => v.createdAt + '|' + v.name));
+    let added = 0, skipped = 0;
+    for (const v of data.visits) {
+      if (seen.has(v.createdAt + '|' + v.name)) { skipped++; continue; }
+      const photos = [];
+      for (const src of v.photos || []) { try { photos.push(await state.store.savePhoto(await (await fetch(src)).blob())); } catch(err) {} }
+      await state.store.add({ ...v, photos });
+      seen.add(v.createdAt + '|' + v.name); added++;
+    }
+    bkMsg(`기록 ${added}건을 되살렸어요.` + (skipped ? ` 이미 있는 ${skipped}건은 건너뛰었어요.` : ''));
+  } catch(err) { bkMsg('이 파일은 방문일지 백업 파일이 아니거나 손상됐어요. 방문일지에서 만든 .json 파일을 골라 주세요.', true); }
+  finally { btn.disabled = false; btn.textContent = '백업 파일에서 되살리기'; }
+};
+
 renderPhotos();
 initStore();
+// 휴대폰이 저장 공간을 정리할 때 기록이 지워지지 않도록 요청
+if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 // 일반 웹 주소에서 열면 홈 화면에 앱처럼 설치되도록 서비스워커 등록 (Claude 링크 안에서는 건너뜀)
 if ('serviceWorker' in navigator && window.top === window && location.protocol === 'https:' && !window.claude) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
