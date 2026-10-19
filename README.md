@@ -2,7 +2,7 @@
 
 업장을 방문할 때 사진, GPS 위치, 주소, 메모를 휴대폰으로 남기는 웹앱입니다.
 
-- 열기: https://gooclub-prog.github.io/visit-log-/
+- 열기: https://gooclub-prog.github.io/visit-log-/ (휴대폰 크롬에서 열고 ⋮ → "앱 설치")
 - 휴대폰 설치: 안드로이드 크롬 ⋮ 메뉴 → "앱 설치" / 아이폰 사파리 공유 버튼 → "홈 화면에 추가"
 - 기록은 그 휴대폰 브라우저 안에만 저장됩니다. 목록 화면의 CSV 버튼으로 가끔 백업하세요.
 - 주소 자동 찾기는 OpenStreetMap(Nominatim)을 씁니다. GPS 오차가 있을 수 있으니 주소는 직접 고칠 수 있습니다.
