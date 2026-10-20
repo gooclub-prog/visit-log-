@@ -157,7 +157,7 @@ a{color:var(--accent)}
   <section id="view-list" hidden>
     <div class="row" style="margin-bottom:12px">
       <input type="search" id="q" placeholder="업장명·주소·메모 검색" style="flex:1;min-width:0">
-      <button class="btn" id="btn-backup" type="button" aria-expanded="false">백업</button>
+      <button class="btn" id="btn-backup" type="button" aria-expanded="false">백업·시트</button>
     </div>
     <div class="card" id="backup" hidden style="margin-bottom:12px;gap:12px">
       <div class="field">
@@ -170,6 +170,20 @@ a{color:var(--accent)}
       <button class="btn" id="btn-bk-load" type="button">백업 파일에서 되살리기</button>
       <button class="btn" id="btn-csv" type="button">엑셀(CSV)로 내보내기 (사진 제외)</button>
       <p class="hint" id="backup-msg" hidden></p>
+      <div class="field" id="sync-box" style="border-top:1px solid var(--line);padding-top:14px;gap:8px">
+        <strong>구글 시트 자동 동기화</strong>
+        <p class="hint" id="sync-status">아직 연결하지 않았어요. 연결하면 저장할 때마다 기록이 구글 시트에, 사진이 구글 드라이브에 자동으로 들어가요.</p>
+        <label for="f-sync-url">웹 앱 주소</label>
+        <input type="text" id="f-sync-url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec">
+        <label for="f-sync-key">비밀번호 (시트 코드에 넣은 것과 같게)</label>
+        <input type="text" id="f-sync-key" autocapitalize="off" autocomplete="off">
+        <div class="row">
+          <button class="btn primary" id="btn-sync-save" type="button">연결하기</button>
+          <button class="btn" id="btn-sync-now" type="button" hidden>지금 보내기</button>
+          <button class="btn" id="btn-sync-off" type="button" hidden>연결 끊기</button>
+        </div>
+        <p class="hint">처음 설정은 PC에서 <a href="setup.html" target="_blank" rel="noopener">구글 시트 연결 안내</a>를 따라 해 주세요.</p>
+      </div>
     </div>
     <div class="list" id="list"></div>
   </section>
@@ -204,7 +218,8 @@ const localStore = {
   photoSrc(p){ return p.src; },
   async add(v){ v.id = crypto.randomUUID(); await this.tx('readwrite', s => s.put(v)); this.refresh(); },
   async remove(v){ await this.tx('readwrite', s => s.delete(v.id)); this.refresh(); },
-  async refresh(){ try { state.visits = await this.all(); } catch(e){ state.visits = []; } render(); },
+  async update(v){ await this.tx('readwrite', s => s.put(v)); },
+  async refresh(){ try { state.visits = await this.all(); } catch(e){ state.visits = []; } render(); syncPending(); },
   start(){ this.refresh(); }
 };
 function cloudStore(db, assets){
@@ -412,7 +427,7 @@ function renderList(){
     const p = v.photos?.[0];
     html += `<button class="slip" type="button" data-id="${esc(v.id)}">
       <div class="thumb">${p ? `<img src="${esc(state.store.photoSrc(p))}" alt="" loading="lazy">` : '사진 없음'}</div>
-      <div class="meta"><h3>${esc(v.name)}${v.example ? '<span class="tag">예시</span>' : ''}</h3>
+      <div class="meta"><h3>${esc(v.name)}${v.example ? '<span class="tag">예시</span>' : ''}${sync.cfg && !v.synced && state.store.kind === 'local' ? '<span class="tag">시트 전송 대기</span>' : ''}</h3>
       <div class="addr">${esc(v.address || '주소 없음')}</div><time>${fmt(v.visitedAt).slice(11)}${v.photos?.length ? ` · 사진 ${v.photos.length}장` : ''}${v.lat != null ? ' · 위치 있음' : ''}</time></div></button>`;
   }
   $('#list').innerHTML = html;
@@ -536,6 +551,75 @@ $('#f-restore').onchange = async e => {
   } catch(err) { bkMsg('이 파일은 방문일지 백업 파일이 아니거나 손상됐어요. 방문일지에서 만든 .json 파일을 골라 주세요.', true); }
   finally { btn.disabled = false; btn.textContent = '백업 파일에서 되살리기'; }
 };
+
+/* ---------- 구글 시트 자동 동기화 (일반 웹 주소에서만) ---------- */
+const SYNC_KEY = 'visit-log-sheet';
+const sync = { cfg: null, busy: false, again: false, error: '' };
+try { sync.cfg = JSON.parse(lsGet(SYNC_KEY) || 'null'); } catch(e) {}
+async function postSheet(cfg, payload){
+  // text/plain 으로 보내야 구글 웹 앱이 추가 확인 요청 없이 받아 줌
+  const r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: cfg.key, ...payload }) });
+  let j; try { j = await r.json(); } catch(e) { const err = new Error('웹 앱 주소가 맞지 않거나 "모든 사용자" 공개로 배포되지 않았어요.'); err.code = 'bad_url'; throw err; }
+  if (!j.ok) { const err = new Error(j.message || j.error); err.code = j.error; throw err; }
+  return j;
+}
+async function photosAsDataUrls(v){
+  const out = [];
+  for (const p of v.photos || []) { try { const src = state.store.photoSrc(p); out.push(src.startsWith('data:') ? src : await blobToDataUrl(await (await fetch(src)).blob())); } catch(e) {} }
+  return out;
+}
+async function syncPending(){
+  if (!sync.cfg || state.store?.kind !== 'local') { renderSync(); return; }
+  if (sync.busy) { sync.again = true; return; }
+  if (navigator.onLine === false) { renderSync(); return; }
+  sync.busy = true; sync.error = ''; renderSync();
+  let changed = false;
+  try {
+    for (const v of state.visits.filter(x => !x.synced)) {
+      const { id, photos, synced, ...rest } = v;
+      try {
+        await postSheet(sync.cfg, { visit: { ...rest, id: v.createdAt || id }, photos: await photosAsDataUrls(v) });
+        await state.store.update({ ...v, synced: true }); changed = true;
+      } catch(e) {
+        sync.error = e.code === 'bad_key' || e.code === 'key_not_set' || e.code === 'bad_url' ? e.message : '인터넷이 약해서 일부를 못 보냈어요. 연결되면 다시 보낼게요.';
+        if (e.code) break;
+      }
+    }
+  } finally {
+    sync.busy = false;
+    if (changed) { try { state.visits = await localStore.all(); } catch(e) {} render(); }
+    renderSync();
+    if (sync.again) { sync.again = false; syncPending(); }
+  }
+}
+function renderSync(){
+  const box = $('#sync-box'); if (!box) return;
+  box.hidden = state.store?.kind !== 'local';
+  const on = !!sync.cfg, st = $('#sync-status');
+  $('#btn-sync-now').hidden = !on; $('#btn-sync-off').hidden = !on;
+  $('#btn-sync-save').textContent = on ? '다시 연결하기' : '연결하기';
+  if (!on) return;
+  const left = state.visits.filter(v => !v.synced).length;
+  st.textContent = sync.busy ? '구글 시트로 보내는 중…' : sync.error ? sync.error : left ? `연결됨 · 아직 못 보낸 기록 ${left}건` : '연결됨 · 모든 기록을 구글 시트에 보냈어요.';
+  st.classList.toggle('warn', !!sync.error || (!sync.busy && left > 0));
+}
+window.addEventListener('online', () => syncPending());
+$('#btn-sync-now').onclick = () => syncPending();
+$('#btn-sync-off').onclick = () => { sync.cfg = null; try { localStorage.removeItem(SYNC_KEY); } catch(e) {} $('#sync-status').textContent = '연결을 끊었어요. 시트에 이미 들어간 기록은 그대로 있어요.'; $('#sync-status').classList.remove('warn'); renderSync(); render(); };
+$('#btn-sync-save').onclick = async () => {
+  const url = $('#f-sync-url').value.trim(), key = $('#f-sync-key').value.trim(), st = $('#sync-status');
+  if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec/.test(url)) { st.textContent = '웹 앱 주소는 https://script.google.com/macros/s/ 로 시작하고 /exec 로 끝나야 해요.'; st.classList.add('warn'); return; }
+  if (!key) { st.textContent = '비밀번호를 넣어 주세요.'; st.classList.add('warn'); $('#f-sync-key').focus(); return; }
+  const btn = $('#btn-sync-save'); btn.disabled = true; btn.textContent = '연결 확인 중…';
+  try {
+    await postSheet({ url, key }, { ping: true });
+    sync.cfg = { url, key }; lsSet(SYNC_KEY, JSON.stringify(sync.cfg)); sync.error = '';
+    toast('구글 시트에 연결됐어요.'); render(); syncPending();
+  } catch(e) {
+    st.textContent = e.code ? e.message : '연결하지 못했어요. 주소를 다시 확인해 주세요.'; st.classList.add('warn');
+  } finally { btn.disabled = false; renderSync(); }
+};
+if (sync.cfg) { $('#f-sync-url').value = sync.cfg.url; $('#f-sync-key').value = sync.cfg.key; }
 
 renderPhotos();
 initStore();

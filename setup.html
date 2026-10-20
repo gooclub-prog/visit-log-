@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>구글 시트 연결 안내</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@700;800&family=IBM+Plex+Sans+KR:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{--bg:#EEF1EC;--surface:#fff;--ink:#17201B;--muted:#5E6B63;--line:#D5DCD5;--accent:#1E4FD8;--accent-ink:#fff;--warn:#C2410C;--code:#F6F8F5;
+--display:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;--body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;--mono:"IBM Plex Mono",ui-monospace,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#111613;--surface:#1A211D;--ink:#E8EEE9;--muted:#9AA8A0;--line:#2E3832;--accent:#7C9CFF;--accent-ink:#0B1230;--warn:#FB923C;--code:#141A16;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 var(--body)}
+main{max-width:760px;margin:0 auto;padding:28px max(16px,env(safe-area-inset-left,0px)) 60px max(16px,env(safe-area-inset-right,0px));display:grid;gap:18px}
+h1{font:800 1.6rem var(--display);margin:0;text-wrap:balance}
+.lead{color:var(--muted);margin:0}
+ol.steps{list-style:none;margin:0;padding:0;display:grid;gap:14px;counter-reset:s}
+ol.steps>li{counter-increment:s;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 16px 16px 60px;position:relative;min-width:0}
+ol.steps>li::before{content:counter(s);position:absolute;left:16px;top:16px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font:700 .95rem var(--display);display:grid;place-items:center}
+h2{font:700 1.08rem var(--display);margin:2px 0 6px}
+p{margin:6px 0}
+b{font-weight:600}
+.ui{display:inline-block;border:1px solid var(--line);background:var(--code);border-radius:6px;padding:0 6px;font-size:.92em;white-space:nowrap}
+.warn{color:var(--warn)}
+.codebox{display:grid;gap:8px;margin-top:10px}
+pre{margin:0;max-height:320px;overflow:auto;background:var(--code);border:1px solid var(--line);border-radius:10px;padding:12px;font:500 .78rem/1.5 var(--mono);white-space:pre}
+button{font:600 .95rem var(--body);border-radius:10px;padding:10px 16px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer;justify-self:start}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+  <h1>구글 시트 연결 안내</h1>
+  <p class="lead">방문일지에 저장한 기록을 구글 시트에, 사진을 구글 드라이브에 자동으로 모으는 설정이에요. 처음 한 번만 하면 되고, <b>PC에서</b> 하시는 게 편해요. 15분쯤 걸려요.</p>
+
+  <ol class="steps">
+    <li>
+      <h2>구글 시트 만들기</h2>
+      <p><a href="https://sheets.google.com" target="_blank" rel="noopener">sheets.google.com</a>에 들어가 기록을 모을 구글 계정으로 로그인하세요.</p>
+      <p><span class="ui">+ 빈 스프레드시트</span>를 누르고, 왼쪽 위 "제목 없는 스프레드시트"를 눌러 이름을 <b>방문일지</b>로 바꾸세요.</p>
+    </li>
+    <li>
+      <h2>코드 넣는 화면 열기</h2>
+      <p>시트 위쪽 메뉴에서 <span class="ui">확장 프로그램</span> → <span class="ui">Apps Script</span>를 누르세요. 새 탭에 코드 편집 화면이 열려요.</p>
+    </li>
+    <li>
+      <h2>코드 붙여 넣기</h2>
+      <p>편집 화면에 이미 적혀 있는 <code>function myFunction() …</code>을 <b>모두 지우고</b>, 아래 코드를 복사해서 붙여 넣으세요.</p>
+      <div class="codebox">
+        <button type="button" id="copy">코드 복사</button>
+        <pre id="code">코드를 불러오는 중…</pre>
+      </div>
+      <p>붙여 넣은 코드 위쪽의 <code>const KEY = '여기에-비밀번호';</code>에서 <b>여기에-비밀번호</b> 부분만 지우고 원하는 비밀번호를 적으세요(예: <code>'visit2026!'</code>). 따옴표는 남겨 두세요. 이 비밀번호는 나중에 휴대폰 앱에도 똑같이 넣어요.</p>
+      <p>다 했으면 위쪽 <span class="ui">💾 저장</span> 아이콘을 누르세요.</p>
+    </li>
+    <li>
+      <h2>권한 허락하기</h2>
+      <p>위쪽 실행 버튼 옆의 함수 고르는 칸에서 <b>setup</b>을 고르고 <span class="ui">▷ 실행</span>을 누르세요.</p>
+      <p><span class="ui">권한 검토</span> → 내 계정 선택을 누르세요. <span class="warn">"Google에서 확인하지 않은 앱"</span>이라는 경고가 나오면, 원철님이 직접 만든 코드라서 나오는 정상 화면이에요. 왼쪽 아래 <span class="ui">고급</span> → <span class="ui">방문일지(으)로 이동(안전하지 않음)</span> → <span class="ui">허용</span>을 누르세요.</p>
+      <p>아래쪽에 "실행 완료"가 나오면 성공이에요. 시트에 <b>방문기록</b> 탭이, 드라이브에 <b>방문일지 사진</b> 폴더가 생겨요.</p>
+    </li>
+    <li>
+      <h2>웹 앱으로 배포하기</h2>
+      <p>오른쪽 위 <span class="ui">배포</span> → <span class="ui">새 배포</span>를 누르세요.</p>
+      <p>"유형 선택" 옆 톱니바퀴 ⚙ → <span class="ui">웹 앱</span>을 고르세요.</p>
+      <p><b>실행 사용자:</b> <span class="ui">나</span>, <b>액세스 권한이 있는 사용자:</b> <span class="ui">모든 사용자</span>로 고르고 <span class="ui">배포</span>를 누르세요.</p>
+      <p>나오는 <b>웹 앱 URL</b>(https://script.google.com/macros/s/…/exec)을 <span class="ui">복사</span>하세요. 휴대폰으로 옮기려면 카카오톡 "나와의 채팅"에 붙여 보내면 편해요.</p>
+    </li>
+    <li>
+      <h2>휴대폰 앱에 연결하기</h2>
+      <p>휴대폰에서 방문일지 앱을 열고 <span class="ui">방문 목록</span> → <span class="ui">백업·시트</span>를 누르세요.</p>
+      <p>"구글 시트 자동 동기화"의 <b>웹 앱 주소</b> 칸에 복사한 URL을, <b>비밀번호</b> 칸에 3단계에서 정한 비밀번호를 넣고 <span class="ui">연결하기</span>를 누르세요.</p>
+      <p>"연결됨"이 나오면 끝이에요. 지금까지 저장한 기록도 자동으로 시트에 들어가고, 앞으로는 저장할 때마다 바로 들어가요. 인터넷이 안 될 때 저장한 기록은 "시트 전송 대기"로 표시됐다가 연결되면 다시 보내요.</p>
+    </li>
+  </ol>
+  <p class="lead">PC에서는 그 구글 시트를 열면 기록이 보이고, 사진 칸의 링크를 누르면 드라이브의 사진이 열려요. <span class="ui">파일</span> → <span class="ui">다운로드</span> → <span class="ui">Microsoft Excel</span>로 엑셀 파일로도 받을 수 있어요.</p>
+</main>
+<script>
+fetch('google-sheet/Code.gs').then(r => r.ok ? r.text() : Promise.reject()).then(t => { document.getElementById('code').textContent = t; })
+  .catch(() => { document.getElementById('code').textContent = '코드를 불러오지 못했어요. 새로고침해 주세요.'; });
+document.getElementById('copy').onclick = async e => {
+  const t = document.getElementById('code').textContent, b = e.currentTarget;
+  try { await navigator.clipboard.writeText(t); b.textContent = '복사했어요'; }
+  catch (err) { const r = document.createRange(); r.selectNodeContents(document.getElementById('code')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = '선택된 코드를 Ctrl+C로 복사하세요'; }
+  setTimeout(() => b.textContent = '코드 복사', 3000);
+};
+</script>
+</body>
+</html>
