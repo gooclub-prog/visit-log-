@@ -182,6 +182,7 @@ a{color:var(--accent)}
           <button class="btn" id="btn-sync-now" type="button" hidden>지금 보내기</button>
           <button class="btn" id="btn-sync-off" type="button" hidden>연결 끊기</button>
         </div>
+        <p class="hint" id="sync-msg" role="status" hidden></p>
         <p class="hint">처음 설정은 PC에서 <a href="setup.html" target="_blank" rel="noopener">구글 시트 연결 안내</a>를 따라 해 주세요.</p>
       </div>
     </div>
@@ -603,20 +604,22 @@ function renderSync(){
   st.textContent = sync.busy ? '구글 시트로 보내는 중…' : sync.error ? sync.error : left ? `연결됨 · 아직 못 보낸 기록 ${left}건` : '연결됨 · 모든 기록을 구글 시트에 보냈어요.';
   st.classList.toggle('warn', !!sync.error || (!sync.busy && left > 0));
 }
+function syncMsg(text, warn){ const m = $('#sync-msg'); m.hidden = !text; m.textContent = text || ''; m.classList.toggle('warn', !!warn); if (text) toast(text); }
 window.addEventListener('online', () => syncPending());
 $('#btn-sync-now').onclick = () => syncPending();
 $('#btn-sync-off').onclick = () => { sync.cfg = null; try { localStorage.removeItem(SYNC_KEY); } catch(e) {} $('#sync-status').textContent = '연결을 끊었어요. 시트에 이미 들어간 기록은 그대로 있어요.'; $('#sync-status').classList.remove('warn'); renderSync(); render(); };
 $('#btn-sync-save').onclick = async () => {
   const url = $('#f-sync-url').value.trim(), key = $('#f-sync-key').value.trim(), st = $('#sync-status');
-  if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec/.test(url)) { st.textContent = '웹 앱 주소는 https://script.google.com/macros/s/ 로 시작하고 /exec 로 끝나야 해요.'; st.classList.add('warn'); return; }
-  if (!key) { st.textContent = '비밀번호를 넣어 주세요.'; st.classList.add('warn'); $('#f-sync-key').focus(); return; }
+  if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec/.test(url)) { syncMsg(/\/dev$/.test(url) ? '주소 끝이 /dev 인 테스트 주소예요. "배포 → 새 배포"에서 나온 /exec 로 끝나는 웹 앱 URL을 넣어 주세요.' : '웹 앱 주소는 https://script.google.com/macros/s/ 로 시작하고 /exec 로 끝나야 해요. 주소를 처음부터 끝까지 다시 붙여 넣어 주세요.', true); return; }
+  if (!key) { syncMsg('비밀번호를 넣어 주세요.', true); $('#f-sync-key').focus(); return; }
+  syncMsg('');
   const btn = $('#btn-sync-save'); btn.disabled = true; btn.textContent = '연결 확인 중…';
   try {
     await postSheet({ url, key }, { ping: true });
     sync.cfg = { url, key }; lsSet(SYNC_KEY, JSON.stringify(sync.cfg)); sync.error = '';
-    toast('구글 시트에 연결됐어요.'); render(); syncPending();
+    syncMsg('구글 시트에 연결됐어요. 기록을 보내기 시작할게요.'); render(); syncPending();
   } catch(e) {
-    st.textContent = e.code ? e.message : '연결하지 못했어요. 주소를 다시 확인해 주세요.'; st.classList.add('warn');
+    syncMsg(e.code ? e.message : '연결하지 못했어요. 배포할 때 "액세스 권한: 모든 사용자"로 했는지, 주소가 맞는지 확인해 주세요.', true);
   } finally { btn.disabled = false; renderSync(); }
 };
 if (sync.cfg) { $('#f-sync-url').value = sync.cfg.url; $('#f-sync-key').value = sync.cfg.key; }
