@@ -557,9 +557,13 @@ $('#f-restore').onchange = async e => {
 const SYNC_KEY = 'visit-log-sheet';
 const sync = { cfg: null, busy: false, again: false, error: '' };
 try { sync.cfg = JSON.parse(lsGet(SYNC_KEY) || 'null'); } catch(e) {}
-async function postSheet(cfg, payload){
+async function postSheet(cfg, payload, ms = 90000){
   // text/plain 으로 보내야 구글 웹 앱이 추가 확인 요청 없이 받아 줌
-  const r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: cfg.key, ...payload }) });
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms);
+  let r;
+  try { r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: cfg.key, ...payload }), signal: ctl.signal }); }
+  catch(e) { if (e.name === 'AbortError') { const err = new Error(`구글 시트가 ${Math.round(ms/1000)}초 동안 답하지 않았어요. 인터넷을 확인하고 잠시 뒤 다시 눌러 주세요.`); err.code = 'timeout'; throw err; } throw e; }
+  finally { clearTimeout(timer); }
   let j; try { j = await r.json(); } catch(e) { const err = new Error('웹 앱 주소가 맞지 않거나 "모든 사용자" 공개로 배포되지 않았어요.'); err.code = 'bad_url'; throw err; }
   if (!j.ok) { const err = new Error(j.message || j.error); err.code = j.error; throw err; }
   return j;
@@ -615,7 +619,7 @@ $('#btn-sync-save').onclick = async () => {
   syncMsg('');
   const btn = $('#btn-sync-save'); btn.disabled = true; btn.textContent = '연결 확인 중…';
   try {
-    await postSheet({ url, key }, { ping: true });
+    await postSheet({ url, key }, { ping: true }, 30000);
     sync.cfg = { url, key }; lsSet(SYNC_KEY, JSON.stringify(sync.cfg)); sync.error = '';
     syncMsg('구글 시트에 연결됐어요. 기록을 보내기 시작할게요.'); render(); syncPending();
   } catch(e) {
