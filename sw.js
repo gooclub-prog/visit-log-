@@ -1,5 +1,5 @@
 // 앱 화면 파일을 캐시해 두어 전파가 약한 곳에서도 열리게 함 (기록은 IndexedDB에 저장)
-const CACHE = 'visit-log-v6';
+const CACHE = 'visit-log-v7';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));

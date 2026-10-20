@@ -4,12 +4,13 @@
  * 1) 아래 KEY 의 '여기에-비밀번호' 를 원하는 비밀번호로 바꾸세요. (앱에도 같은 비밀번호를 넣어요)
  * 2) 배포 → 새 배포 → 유형: 웹 앱 / 실행 사용자: 나 / 액세스 권한: 모든 사용자 → 배포
  * 3) 나온 "웹 앱 URL" 을 방문일지 앱의 "구글 시트 연결" 칸에 붙여 넣으세요.
+ * 명함 글자 읽기: 왼쪽 "서비스 +" 에서 "Drive API" 를 추가해야 해요.
  */
 const KEY = '여기에-비밀번호';
 
 const SHEET_NAME = '방문기록';
 const FOLDER_NAME = '방문일지 사진';
-const HEADERS = ['방문일시', '업장명', '주소', '메모', '위도', '경도', 'GPS 오차(m)', '지도', '사진1', '사진2', '사진3', '사진4', '기록 ID', '받은 시각'];
+const HEADERS = ['방문일시', '업장명', '주소', '메모', '위도', '경도', 'GPS 오차(m)', '지도', '사진1', '사진2', '사진3', '사진4', '기록 ID', '받은 시각', '대표자', '이메일', '전화번호', '명함 사진'];
 const ID_COL = 13; // '기록 ID' 열 번호
 
 function doGet() {
@@ -22,6 +23,7 @@ function doPost(e) {
     if (KEY === '여기에-비밀번호') return json_({ ok: false, error: 'key_not_set', message: '스크립트의 KEY 비밀번호를 먼저 바꿔 주세요.' });
     if (body.key !== KEY) return json_({ ok: false, error: 'bad_key', message: '비밀번호가 맞지 않아요.' });
     if (body.ping) return json_({ ok: true, message: '연결됐어요.' });
+    if (body.ocr) return ocr_(body.ocr);
 
     const v = body.visit || {};
     if (!v.id || !v.name) return json_({ ok: false, error: 'bad_request', message: '기록 내용이 비어 있어요.' });
@@ -46,13 +48,17 @@ function doPost(e) {
       });
       while (links.length < 4) links.push('');
 
+      let cardLink = '';
+      const cm = body.card && /^data:([^;]+);base64,(.*)$/.exec(body.card);
+      if (cm) cardLink = folder.createFile(Utilities.newBlob(Utilities.base64Decode(cm[2]), cm[1], safeName_(v) + '_명함.jpg')).getUrl();
+
       const hasLoc = v.lat != null && v.lng != null;
       const row = [
         v.visitedAt ? new Date(v.visitedAt) : '',
         v.name, v.address || '', v.memo || '',
         hasLoc ? v.lat : '', hasLoc ? v.lng : '', v.locAcc || '',
         hasLoc ? 'https://map.kakao.com/link/map/' + encodeURIComponent(v.name) + ',' + v.lat + ',' + v.lng : '',
-      ].concat(links, [String(v.id), new Date()]);
+      ].concat(links, [String(v.id), new Date(), v.person || '', v.email || '', v.phone || '', cardLink]);
       sheet.appendRow(row);
       sheet.getRange(sheet.getLastRow(), 1).setNumberFormat('yyyy-mm-dd hh:mm');
       return json_({ ok: true });
@@ -71,9 +77,25 @@ function sheet_() {
     sh = ss.insertSheet(SHEET_NAME);
     sh.appendRow(HEADERS);
     sh.setFrozenRows(1);
-    sh.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
   }
+  // 예전 버전으로 만든 시트에는 새 칸 제목을 덧붙임
+  if (sh.getLastColumn() < HEADERS.length) sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+  sh.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
   return sh;
+}
+
+/** 명함 사진 글자 읽기: 구글 문서로 변환(OCR)한 뒤 글자만 꺼내고 임시 문서는 지움 */
+function ocr_(dataUrl) {
+  if (typeof Drive === 'undefined') return json_({ ok: false, error: 'ocr_setup', message: 'Apps Script 왼쪽 "서비스 +"에서 Drive API를 추가해 주세요.' });
+  const m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl);
+  if (!m) return json_({ ok: false, error: 'bad_request', message: '명함 사진을 읽을 수 없어요.' });
+  const blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], 'card.jpg');
+  const file = Drive.Files.create({ name: '명함 글자 읽기(임시)', mimeType: 'application/vnd.google-apps.document' }, blob, { ocrLanguage: 'ko' });
+  try {
+    return json_({ ok: true, text: DocumentApp.openById(file.id).getBody().getText() });
+  } finally {
+    DriveApp.getFileById(file.id).setTrashed(true);
+  }
 }
 
 function folder_() {
@@ -94,4 +116,6 @@ function json_(o) {
 function setup() {
   sheet_();
   folder_();
+  DocumentApp.getActiveDocument; // 명함 읽기에 필요한 문서 권한을 함께 받기 위한 줄
+  if (typeof Drive !== 'undefined') Drive.Files.list({ pageSize: 1 });
 }

@@ -47,7 +47,7 @@ h1{font-family:var(--display);font-weight:800;font-size:1.35rem;margin:0;letter-
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:18px}
 .field{display:grid;gap:6px;min-width:0}
 label,.lbl{font-size:.8rem;font-weight:600;color:var(--muted);letter-spacing:.02em}
-input[type=text],input[type=datetime-local],textarea,input[type=search]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+input[type=text],input[type=email],input[type=tel],input[type=datetime-local],textarea,input[type=search]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px}
 textarea{min-height:76px;resize:vertical}
 input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .photos{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
@@ -61,6 +61,11 @@ input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px soli
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.danger{color:var(--danger);border-color:var(--danger);background:none}
 .btn:disabled{opacity:.5;cursor:default}
+.cardrow{display:grid;grid-template-columns:96px 1fr;gap:12px;align-items:center}
+.cardrow .ph{width:96px}
+.cardrow.empty{grid-template-columns:1fr}
+details.ocr summary{cursor:pointer;font-size:.82rem;color:var(--muted)}
+details.ocr pre{white-space:pre-wrap;font:500 .8rem/1.5 var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;margin:6px 0 0;max-height:200px;overflow:auto}
 .loc{display:grid;gap:8px;padding:12px;border-radius:10px;background:var(--chip)}
 .coord{font-family:var(--mono);font-size:.85rem;font-variant-numeric:tabular-nums;word-break:break-all}
 .hint{font-size:.82rem;color:var(--muted);margin:0}
@@ -143,6 +148,34 @@ a{color:var(--accent)}
       <div class="field">
         <label for="f-time">방문 일시</label>
         <input type="datetime-local" id="f-time">
+      </div>
+
+      <div class="field">
+        <span class="lbl">명함</span>
+        <div class="cardrow empty" id="cardrow">
+          <div class="ph" id="card-thumb" hidden><img id="card-img" alt="명함 사진"><button type="button" id="card-rm" aria-label="명함 사진 빼기">×</button></div>
+          <div class="row">
+            <button type="button" class="btn" id="btn-card">명함 촬영</button>
+            <button type="button" class="btn" id="btn-card-gal">앨범에서</button>
+          </div>
+        </div>
+        <input type="file" id="f-card" accept="image/*" capture="environment" hidden>
+        <input type="file" id="f-card-gal" accept="image/*" hidden>
+        <p class="hint" id="card-hint">명함을 찍으면 이름·이메일·전화번호를 읽어 아래 칸에 채워요. 틀린 글자는 직접 고쳐 주세요.</p>
+        <details class="ocr" id="card-text" hidden><summary>명함에서 읽은 글자 보기</summary><pre></pre></details>
+      </div>
+
+      <div class="field">
+        <label for="f-person">대표자 이름</label>
+        <input type="text" id="f-person" placeholder="예: 홍길동">
+      </div>
+      <div class="field">
+        <label for="f-email">이메일</label>
+        <input type="email" id="f-email" inputmode="email" autocapitalize="off" placeholder="예: hong@example.com">
+      </div>
+      <div class="field">
+        <label for="f-phone">전화번호</label>
+        <input type="tel" id="f-phone" inputmode="tel" placeholder="예: 010-1234-5678">
       </div>
 
       <div class="field">
@@ -381,9 +414,11 @@ $('#form').addEventListener('submit', async e => {
   try {
     const photos = [];
     for (const p of state.photos) photos.push(await state.store.savePhoto(p.blob));
+    const card = state.card ? await state.store.savePhoto(state.card.blob) : null;
     const t = $('#f-time').value;
     await state.store.add({
       name, address: $('#f-addr').value.trim(), memo: $('#f-memo').value.trim(),
+      person: $('#f-person').value.trim(), email: $('#f-email').value.trim(), phone: $('#f-phone').value.trim(), card,
       visitedAt: (t ? new Date(t) : new Date()).toISOString(), createdAt: new Date().toISOString(),
       lat: state.loc?.lat ?? null, lng: state.loc?.lng ?? null, locAcc: state.loc?.acc ? Math.round(state.loc.acc) : null, locSource: state.loc?.source ?? null, photos
     });
@@ -393,7 +428,7 @@ $('#form').addEventListener('submit', async e => {
   } finally { btn.disabled = false; btn.textContent = '방문 기록 저장'; }
 });
 function resetForm(){
-  $('#form').reset(); state.photos.forEach(p => URL.revokeObjectURL(p.url)); state.photos = []; state.loc = null;
+  $('#form').reset(); state.photos.forEach(p => URL.revokeObjectURL(p.url)); state.photos = []; state.loc = null; setCard(null);
   $('#coord').textContent = '아직 위치가 없어요'; $('#map-link').hidden = true; $('#btn-addr').disabled = true; $('#addr-alt').hidden = true; $('#btn-gps').textContent = '현재 위치 가져오기';
   hint('사진에 위치 정보가 있으면 자동으로 채워져요.'); $('#f-time').value = toLocalInput(new Date()); renderPhotos();
 }
@@ -416,7 +451,7 @@ function render(){
 }
 function renderList(){
   const q = $('#q').value.trim().toLowerCase();
-  const items = state.visits.filter(v => !q || [v.name, v.address, v.memo].join(' ').toLowerCase().includes(q));
+  const items = state.visits.filter(v => !q || [v.name, v.address, v.memo, v.person, v.email, v.phone].join(' ').toLowerCase().includes(q));
   if (!items.length) {
     $('#list').innerHTML = `<div class="empty"><strong>${q ? '검색 결과가 없어요' : '아직 방문 기록이 없어요'}</strong><span>${q ? '다른 단어로 찾아보세요.' : '업장에 도착하면 사진을 찍고 위치를 남겨 보세요.'}</span>${q ? '' : '<button class="btn primary" type="button" onclick="show(\'new\')">첫 방문 기록하기</button>'}</div>`;
     return;
@@ -447,8 +482,12 @@ function renderDetail(){
     <dl class="kv">
       <dt>주소</dt><dd>${esc(v.address || '없음')}</dd>
       <dt>좌표</dt><dd class="coord">${hasLoc ? `${(+v.lat).toFixed(6)}, ${(+v.lng).toFixed(6)}${v.locAcc ? ` (±${v.locAcc}m)` : ''}${v.locSource ? ' · ' + esc(v.locSource) : ''}` : '없음'}</dd>
+      ${v.person ? `<dt>대표자</dt><dd>${esc(v.person)}</dd>` : ''}
+      ${v.phone ? `<dt>전화</dt><dd><a href="tel:${esc(v.phone.replace(/[^0-9+]/g, ''))}">${esc(v.phone)}</a></dd>` : ''}
+      ${v.email ? `<dt>이메일</dt><dd><a href="mailto:${esc(v.email)}">${esc(v.email)}</a></dd>` : ''}
       <dt>메모</dt><dd style="white-space:pre-wrap">${esc(v.memo || '없음')}</dd>
     </dl>
+    ${v.card ? `<div class="field"><span class="lbl">명함</span><a href="${esc(state.store.photoSrc(v.card))}" target="_blank" rel="noopener"><img src="${esc(state.store.photoSrc(v.card))}" alt="명함 사진" style="max-width:100%;border-radius:10px;display:block"></a></div>` : ''}
     <div class="row">
       ${hasLoc ? `<a class="btn" target="_blank" rel="noopener" href="https://map.kakao.com/link/map/${encodeURIComponent(v.name)},${v.lat},${v.lng}">카카오맵</a><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}">구글 지도</a>` : (v.address ? `<a class="btn" target="_blank" rel="noopener" href="https://map.kakao.com/link/search/${encodeURIComponent(v.address)}">주소로 지도 찾기</a>` : '')}
       <button class="btn" type="button" id="copy">주소 복사</button>
@@ -472,7 +511,7 @@ function renderDetail(){
 $('#btn-csv').onclick = async () => {
   if (!state.visits.length) { toast('내보낼 기록이 없어요.'); return; }
   const cell = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
-  const rows = [['방문일시','업장명','주소','위도','경도','메모','사진 수']].concat(state.visits.map(v => [fmt(v.visitedAt), v.name, v.address, v.lat ?? '', v.lng ?? '', v.memo, v.photos?.length || 0]));
+  const rows = [['방문일시','업장명','주소','대표자','전화번호','이메일','위도','경도','메모','사진 수']].concat(state.visits.map(v => [fmt(v.visitedAt), v.name, v.address, v.person, v.phone, v.email, v.lat ?? '', v.lng ?? '', v.memo, v.photos?.length || 0]));
   const csv = '﻿' + rows.map(r => r.map(cell).join(',')).join('\r\n');
   const filename = `방문기록_${fmt(new Date().toISOString()).slice(0,10).replace(/\./g,'')}.csv`;
   try {
@@ -519,8 +558,10 @@ $('#btn-bk-save').onclick = async () => {
         try { const src = state.store.photoSrc(p); photos.push(src.startsWith('data:') ? src : await blobToDataUrl(await (await fetch(src)).blob())); }
         catch(e) { missing++; }
       }
-      const { id, photos: _, ...rest } = v;
-      visits.push({ ...rest, photos });
+      let card = null;
+      if (v.card) { try { const src = state.store.photoSrc(v.card); card = src.startsWith('data:') ? src : await blobToDataUrl(await (await fetch(src)).blob()); } catch(e) { missing++; } }
+      const { id, photos: _, card: __, ...rest } = v;
+      visits.push({ ...rest, photos, card });
     }
     const data = { app: 'visit-log', version: 1, exportedAt: new Date().toISOString(), count: visits.length, visits };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
@@ -545,13 +586,93 @@ $('#f-restore').onchange = async e => {
       if (seen.has(v.createdAt + '|' + v.name)) { skipped++; continue; }
       const photos = [];
       for (const src of v.photos || []) { try { photos.push(await state.store.savePhoto(await (await fetch(src)).blob())); } catch(err) {} }
-      await state.store.add({ ...v, photos });
+      let card = null;
+      if (v.card) { try { card = await state.store.savePhoto(await (await fetch(v.card)).blob()); } catch(err) {} }
+      await state.store.add({ ...v, photos, card });
       seen.add(v.createdAt + '|' + v.name); added++;
     }
     bkMsg(`기록 ${added}건을 되살렸어요.` + (skipped ? ` 이미 있는 ${skipped}건은 건너뛰었어요.` : ''));
   } catch(err) { bkMsg('이 파일은 방문일지 백업 파일이 아니거나 손상됐어요. 방문일지에서 만든 .json 파일을 골라 주세요.', true); }
   finally { btn.disabled = false; btn.textContent = '백업 파일에서 되살리기'; }
 };
+
+/* ---------- 명함: 사진 + 글자 읽기 ---------- */
+state.card = null;
+function setCard(c){
+  if (state.card) URL.revokeObjectURL(state.card.url);
+  state.card = c;
+  $('#card-thumb').hidden = !c; $('#cardrow').classList.toggle('empty', !c);
+  if (c) $('#card-img').src = c.url;
+  $('#btn-card').textContent = c ? '다시 찍기' : '명함 촬영';
+  if (!c) { $('#card-text').hidden = true; $('#card-hint').textContent = '명함을 찍으면 이름·이메일·전화번호를 읽어 아래 칸에 채워요. 틀린 글자는 직접 고쳐 주세요.'; $('#card-hint').classList.remove('warn'); }
+}
+function cardHint(t, warn){ const h = $('#card-hint'); h.textContent = t; h.classList.toggle('warn', !!warn); }
+function fmtPhone(d){
+  if (d.startsWith('02')) return d.length === 9 ? `02-${d.slice(2,5)}-${d.slice(5)}` : `02-${d.slice(2,6)}-${d.slice(6)}`;
+  if (/^1\d{7}$/.test(d)) return `${d.slice(0,4)}-${d.slice(4)}`;
+  if (d.length === 11) return `${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}`;
+  return d;
+}
+function parseCard(text){
+  const lines = String(text || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
+  const em = text.match(/[A-Za-z0-9._%+-]+\s?@\s?[A-Za-z0-9-]+(?:\s?\.\s?[A-Za-z0-9-]+)+/);
+  const email = em ? em[0].replace(/\s/g, '') : '';
+  const phoneRe = /(?:\+?\s?82[\s.)-]*)?\(?0?(?:2|1[016789]|[3-6][1-5]|70|50\d?|80)\)?[\s.-]*\d{3,4}[\s.-]*\d{4}|1[5-9]\d{2}[\s.-]*\d{4}/g;
+  const cands = [];
+  for (const l of lines) {
+    if (l.includes('@')) continue;
+    for (const m of l.matchAll(phoneRe)) {
+      let d = m[0].replace(/\D/g, '');
+      if (d.startsWith('82')) d = '0' + d.slice(2);
+      if (!d.startsWith('0') && !/^1[5-9]\d{6}$/.test(d)) d = '0' + d;
+      if (d.length < 8 || d.length > 11) continue;
+      const before = l.slice(Math.max(0, m.index - 10), m.index).toLowerCase();
+      cands.push({ d, fax: /(fax|팩스|f\s*[.:)]?)\s*$/.test(before), mobile: /^01/.test(d) });
+    }
+  }
+  const pick = cands.find(c => c.mobile && !c.fax) || cands.find(c => !c.fax);
+  const phone = pick ? fmtPhone(pick.d) : '';
+  const TITLE = /(대표이사|공동대표|대표|사장|회장|원장|점장|실장|팀장|과장|부장|차장|이사|본부장|매니저|소장|센터장|주임|대리|사원|ceo|owner|manager|director)/i;
+  const STOP = new Set(['주식회사','유한회사','대표','대표이사','사장','원장','점장','실장','팀장','과장','부장','차장','이사','주소','전화','휴대폰','팩스','이메일','본점','지점','매장','서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주']);
+  const nameIn = l => {
+    const toks = l.replace(TITLE, ' ').replace(/[^가-힣\s]/g, ' ').trim().split(/\s+/).filter(Boolean);
+    if (toks.length >= 2 && toks.length <= 4 && toks.every(t => t.length === 1)) return toks.join('');
+    return toks.find(t => t.length >= 2 && t.length <= 4 && !STOP.has(t) && !/(시|구|동|로|길|층|호|점|회사|상사|식당|카페)$/.test(t)) || '';
+  };
+  let person = '';
+  for (const l of lines) if (TITLE.test(l) && l.length <= 20 && !/\d{3}/.test(l)) { person = nameIn(l); if (person) break; }
+  if (!person) for (const l of lines) {
+    const t = l.replace(/\s+/g, '');
+    if (/^[가-힣]{2,4}$/.test(t) && !STOP.has(t)) { person = t; break; }
+  }
+  return { person, email, phone };
+}
+async function readCard(blob){
+  if (!sync.cfg || state.store?.kind !== 'local') { cardHint('명함 글자를 자동으로 읽으려면 "방문 목록 → 백업·시트"에서 구글 시트를 연결해 주세요. 지금은 아래 칸에 직접 적어 주세요.', true); return; }
+  cardHint('명함 글자를 읽는 중이에요… (10초쯤 걸려요)');
+  try {
+    const j = await postSheet(sync.cfg, { ocr: await blobToDataUrl(blob) }, 60000);
+    const text = j.text || '';
+    $('#card-text').hidden = !text; $('#card-text pre').textContent = text;
+    const r = parseCard(text), filled = [];
+    for (const [k, id, label] of [['person','#f-person','이름'],['email','#f-email','이메일'],['phone','#f-phone','전화번호']]) {
+      if (r[k] && !$(id).value.trim()) { $(id).value = r[k]; filled.push(label); }
+    }
+    cardHint(filled.length ? `${filled.join(', ')} 칸을 채웠어요. 맞는지 확인하고 틀리면 고쳐 주세요.` : '명함에서 이름·이메일·전화번호를 찾지 못했어요. 직접 적어 주세요.', !filled.length);
+  } catch(e) {
+    cardHint(e.code === 'ocr_setup' || e.code === 'bad_request' ? '구글 시트 코드를 새 버전으로 바꿔야 명함을 읽을 수 있어요. 안내 페이지의 "명함 읽기 켜기"를 따라 해 주세요.' : (e.message || '명함 글자를 읽지 못했어요.') + ' 직접 적어 주세요.', true);
+  }
+}
+async function addCard(f){
+  if (!f) return;
+  try { const blob = await shrink(f, 2000, 0.88); setCard({ blob, url: URL.createObjectURL(blob) }); readCard(blob); }
+  catch(e) { cardHint('이 사진은 열 수 없어요. 다시 찍어 주세요.', true); }
+}
+$('#btn-card').onclick = () => $('#f-card').click();
+$('#btn-card-gal').onclick = () => $('#f-card-gal').click();
+for (const id of ['#f-card', '#f-card-gal']) $(id).onchange = e => { addCard(e.target.files[0]); e.target.value = ''; };
+$('#card-rm').onclick = () => setCard(null);
 
 /* ---------- 구글 시트 자동 동기화 (일반 웹 주소에서만) ---------- */
 const SYNC_KEY = 'visit-log-sheet';
@@ -581,9 +702,9 @@ async function syncPending(report){
   let changed = false;
   try {
     for (const v of state.visits.filter(x => !x.synced)) {
-      const { id, photos, synced, ...rest } = v;
+      const { id, photos, synced, card, ...rest } = v;
       try {
-        await postSheet(sync.cfg, { visit: { ...rest, id: v.createdAt || id }, photos: await photosAsDataUrls(v) });
+        await postSheet(sync.cfg, { visit: { ...rest, id: v.createdAt || id }, photos: await photosAsDataUrls(v), card: card ? (await photosAsDataUrls({ photos: [card] }))[0] || null : null });
         await state.store.update({ ...v, synced: true }); changed = true;
       } catch(e) {
         sync.error = e.code === 'server' ? '구글 시트 쪽에서 오류가 났어요: ' + e.message : e.code ? e.message : '인터넷이 약해서 일부를 못 보냈어요. 연결되면 다시 보낼게요.';

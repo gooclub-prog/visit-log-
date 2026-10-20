@@ -28,12 +28,27 @@ pre{margin:0;max-height:320px;overflow:auto;background:var(--code);border:1px so
 button{font:600 .95rem var(--body);border-radius:10px;padding:10px 16px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer;justify-self:start}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 a{color:var(--accent)}
+.update{background:var(--surface);border:2px solid var(--accent);border-radius:12px;padding:16px}
+.update h2{margin-top:0}
+.update ol{margin:8px 0 0;padding-left:22px;display:grid;gap:6px}
 </style>
 </head>
 <body>
 <main>
   <h1>구글 시트 연결 안내</h1>
   <p class="lead">방문일지에 저장한 기록을 구글 시트에, 사진을 구글 드라이브에 자동으로 모으는 설정이에요. 처음 한 번만 하면 되고, <b>PC에서</b> 하시는 게 편해요. 15분쯤 걸려요.</p>
+
+  <section class="update" id="ocr">
+    <h2>이미 연결하셨나요? 명함 읽기 켜기</h2>
+    <p>명함 사진에서 이름·이메일·전화번호를 읽으려면 시트 코드를 새 버전으로 바꿔야 해요. PC에서 아래 순서대로 하세요. 앱 주소와 비밀번호는 그대로예요.</p>
+    <ol>
+      <li>구글 시트 <b>방문일지</b>를 열고 <span class="ui">확장 프로그램</span> → <span class="ui">Apps Script</span>를 누르세요.</li>
+      <li>편집 화면의 코드를 <b>모두 지우고</b>, 아래 3단계의 <span class="ui">코드 복사</span>로 새 코드를 붙여 넣으세요. <code>KEY</code> 줄에는 <b>전에 쓰던 비밀번호</b>를 똑같이 적으세요.</li>
+      <li>왼쪽 메뉴 <b>서비스</b> 옆 <span class="ui">+</span>를 누르고 목록에서 <span class="ui">Drive API</span>를 골라 <span class="ui">추가</span>를 누르세요.</li>
+      <li><span class="ui">💾 저장</span>을 누르고, 함수 칸에서 <b>setup</b>을 골라 <span class="ui">▷ 실행</span>을 누르세요. 권한을 다시 물으면 4단계처럼 허용해 주세요.</li>
+      <li>오른쪽 위 <span class="ui">배포</span> → <span class="ui">배포 관리</span> → 연필 모양 <span class="ui">✏ 수정</span> → 버전에서 <span class="ui">새 버전</span>을 고르고 <span class="ui">배포</span>를 누르세요. "새 배포"가 아니라 <b>배포 관리</b>에서 해야 주소가 바뀌지 않아요.</li>
+    </ol>
+  </section>
 
   <ol class="steps">
     <li>
@@ -53,6 +68,7 @@ a{color:var(--accent)}
         <pre id="code">코드를 불러오는 중…</pre>
       </div>
       <p>붙여 넣은 코드 위쪽의 <code>const KEY = '여기에-비밀번호';</code>에서 <b>여기에-비밀번호</b> 부분만 지우고 원하는 비밀번호를 적으세요(예: <code>'visit2026!'</code>). 따옴표는 남겨 두세요. 이 비밀번호는 나중에 휴대폰 앱에도 똑같이 넣어요.</p>
+      <p>명함 읽기를 쓰려면 왼쪽 메뉴 <b>서비스</b> 옆 <span class="ui">+</span> → <span class="ui">Drive API</span> → <span class="ui">추가</span>도 눌러 주세요.</p>
       <p>다 했으면 위쪽 <span class="ui">💾 저장</span> 아이콘을 누르세요.</p>
     </li>
     <li>
