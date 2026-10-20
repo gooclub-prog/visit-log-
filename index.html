@@ -573,7 +573,7 @@ async function photosAsDataUrls(v){
   for (const p of v.photos || []) { try { const src = state.store.photoSrc(p); out.push(src.startsWith('data:') ? src : await blobToDataUrl(await (await fetch(src)).blob())); } catch(e) {} }
   return out;
 }
-async function syncPending(){
+async function syncPending(report){
   if (!sync.cfg || state.store?.kind !== 'local') { renderSync(); return; }
   if (sync.busy) { sync.again = true; return; }
   if (navigator.onLine === false) { renderSync(); return; }
@@ -586,7 +586,7 @@ async function syncPending(){
         await postSheet(sync.cfg, { visit: { ...rest, id: v.createdAt || id }, photos: await photosAsDataUrls(v) });
         await state.store.update({ ...v, synced: true }); changed = true;
       } catch(e) {
-        sync.error = e.code === 'bad_key' || e.code === 'key_not_set' || e.code === 'bad_url' ? e.message : '인터넷이 약해서 일부를 못 보냈어요. 연결되면 다시 보낼게요.';
+        sync.error = e.code === 'server' ? '구글 시트 쪽에서 오류가 났어요: ' + e.message : e.code ? e.message : '인터넷이 약해서 일부를 못 보냈어요. 연결되면 다시 보낼게요.';
         if (e.code) break;
       }
     }
@@ -594,6 +594,9 @@ async function syncPending(){
     sync.busy = false;
     if (changed) { try { state.visits = await localStore.all(); } catch(e) {} render(); }
     renderSync();
+    const left = state.visits.filter(v => !v.synced).length;
+    if (sync.error) syncMsg(sync.error + (left ? ` (못 보낸 기록 ${left}건)` : ''), true);
+    else if (report) syncMsg(left ? `아직 못 보낸 기록이 ${left}건 있어요.` : '모든 기록이 구글 시트에 들어가 있어요.');
     if (sync.again) { sync.again = false; syncPending(); }
   }
 }
@@ -610,7 +613,7 @@ function renderSync(){
 }
 function syncMsg(text, warn){ const m = $('#sync-msg'); m.hidden = !text; m.textContent = text || ''; m.classList.toggle('warn', !!warn); if (text) toast(text); }
 window.addEventListener('online', () => syncPending());
-$('#btn-sync-now').onclick = () => syncPending();
+$('#btn-sync-now').onclick = () => { syncMsg('구글 시트로 보내는 중이에요…'); syncPending(true); };
 $('#btn-sync-off').onclick = () => { sync.cfg = null; try { localStorage.removeItem(SYNC_KEY); } catch(e) {} $('#sync-status').textContent = '연결을 끊었어요. 시트에 이미 들어간 기록은 그대로 있어요.'; $('#sync-status').classList.remove('warn'); renderSync(); render(); };
 $('#btn-sync-save').onclick = async () => {
   const url = $('#f-sync-url').value.trim(), key = $('#f-sync-key').value.trim(), st = $('#sync-status');
